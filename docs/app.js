@@ -1,6 +1,6 @@
-import { MetaPost } from "./vendor/mp-tikz-wasm/index.js";
 
 const $ = (id) => document.getElementById(id);
+
 const source = $("source");
 const compileBtn = $("compileBtn");
 const engineState = $("engineState");
@@ -8,9 +8,12 @@ const statusBox = $("compileStatus");
 const logOutput = $("logOutput");
 const pdfFrame = $("pdfFrame");
 const emptyState = $("emptyState");
+
 let enginePromise = null;
 let currentPdfUrl = null;
 let lastPdf = null;
+
+// サンプル：TikZ + PGFPlots
 const sample = String.raw`\documentclass[tikz,border=10pt]{standalone}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
@@ -18,134 +21,302 @@ const sample = String.raw`\documentclass[tikz,border=10pt]{standalone}
 \begin{document}
 \begin{tikzpicture}
   \begin{axis}[
-      axis lines = middle,
-      xlabel = {$x$},
-      ylabel = {$y$},
-      xmin = -0.5, xmax = 1.5,
-      ymin = -0.5, ymax = 3.0,
-      xtick = {1},
-      ytick = {1},
-      extra y ticks = {2.718},
-      extra y tick labels = {$e$},
-      grid = none,
-      axis on top
-    ]
+    axis lines=middle,
+    xlabel={$x$},
+    ylabel={$y$},
+    xmin=-0.5, xmax=1.5,
+    ymin=-0.5, ymax=3,
+    grid=major
+  ]
+    % 関数 y=e^x
+    \addplot[
+      domain=0:1,
+      samples=100,
+      thick,
+      blue
+    ] {exp(x)};
 
-    % 1. 領域の塗りつぶし (0 <= x <= 1, 0 <= y <= e^x)
-    \addplot [fill=blue!20, draw=none, domain=0:1] {exp(x)} -- (axis cs:1,0) -- (axis cs:0,0) -- cycle;
+    % 領域の塗りつぶし
+    \addplot[
+      domain=0:1,
+      samples=100,
+      draw=none,
+      fill=blue!20
+    ] {exp(x)} \closedcycle;
 
-    % 2. 境界線の描画
-    \addplot [domain=0:1, thick, blue] {exp(x)};
-    \draw [thick, blue] (axis cs:0,0) -- (axis cs:1,0);
+    % 破線
+    \draw[red,dashed,thick]
+      (axis cs:1,0) -- (axis cs:1,2.718);
 
-    % 3. x = 1 の境界線（破線）
-    \draw [dashed, red, thick] (axis cs:1,0) -- (axis cs:1,2.718);
-
-    % 4. 端点（白抜き）
-    \draw [red, fill=white, thick] (axis cs:1,2.718) circle (2pt);
-    \draw [red, fill=white, thick] (axis cs:1,0) circle (2pt);
-    \draw [black, fill=white, thick] (axis cs:0,0) circle (2pt);
-
+    % 白抜きの端点
+    \draw[fill=white,thick]
+      (axis cs:0,1) circle (2pt);
+    \draw[fill=white,thick,red]
+      (axis cs:1,2.718) circle (2pt);
   \end{axis}
 \end{tikzpicture}
 \end{document}
 `;
 
-function setStatus(kind, message) {
-  statusBox.className = "compile-status " + kind;
+function setStatus(type, message) {
+  statusBox.className = "compile-status" + (type ? " " + type : "");
   statusBox.lastElementChild.textContent = message;
 }
-function log(message, append = true) {
-  if (!append) logOutput.textContent = "";
-  logOutput.textContent += (logOutput.textContent ? "\n" : "") + message;
+
+function log(message, clear = false) {
+  if (clear) logOutput.textContent = "";
+
+  logOutput.textContent +=
+    (logOutput.textContent ? "\n" : "") + message;
+
   logOutput.scrollTop = logOutput.scrollHeight;
 }
+
+function setEngineState(type, message) {
+  engineState.className =
+    "engine-state" + (type ? " " + type : "");
+
+  engineState.replaceChildren();
+
+  const dot = document.createElement("i");
+  engineState.append(dot, document.createTextNode(" " + message));
+}
+
 function updateEditorMeta() {
   const lines = source.value.split("\n").length;
-  $("lineNumbers").textContent = Array.from({length:lines},(_,i)=>i+1).join("\n");
-  $("charCount").textContent = `${source.value.length.toLocaleString("ja-JP")} 文字`;
+
+  $("lineNumbers").textContent =
+    Array.from({ length: lines }, (_, i) => i + 1).join("\n");
+
+  $("charCount").textContent =
+    `${source.value.length.toLocaleString("ja-JP")} 文字`;
 }
-function getEngine() {
+
+// ========================================
+// エンジン読み込み
+// ========================================
+
+async function getEngine() {
   if (!enginePromise) {
-    engineState.className = "engine-state busy";
-    engineState.innerHTML = "<i></i> エンジン読み込み中";
-    enginePromise = MetaPost.create({ logLevel: "warn" });
+    setEngineState("busy", "エンジン読み込み中");
+    log("LaTeXエンジンを読み込んでいます…");
+
+    enginePromise = (async () => {
+      const moduleUrl = new URL(
+        "./vendor/mp-tikz-wasm/index.js",
+        import.meta.url
+      );
+
+      const module = await import(moduleUrl.href);
+
+      if (!module.MetaPost) {
+        throw new Error(
+          "MetaPost が見つかりません。エンジンの配置を確認してください。"
+        );
+      }
+
+      const engine = await module.MetaPost.create({
+        logLevel: "warn"
+      });
+
+      setEngineState("ready", "エンジン準備完了");
+      log("エンジンの初期化が完了しました。");
+
+      return engine;
+    })().catch((error) => {
+      // 失敗した場合は再試行できるようにする
+      enginePromise = null;
+
+      setEngineState("", "エンジン未起動");
+
+      log(
+        "エンジンの読み込みに失敗しました。\n" +
+        (error.message || error) +
+        "\n\nvendor/mp-tikz-wasm/ 内のファイル配置を確認してください。"
+      );
+
+      throw error;
+    });
   }
+
   return enginePromise;
 }
-function formatDiagnostics(items = []) {
-  return items.map(d => {
-    const loc = [d.file, d.line ? `行 ${d.line}` : ""].filter(Boolean).join(":");
-    return `[${String(d.severity || "info").toUpperCase()}] ${loc ? loc + " — " : ""}${d.message || ""}`;
-  }).join("\n");
-}
+
+// ========================================
+// コンパイル
+// ========================================
+
 async function compile() {
   const tex = source.value;
+
   if (!tex.trim()) {
     setStatus("error", "LaTeXコードを入力してください。");
     return;
   }
+
   compileBtn.disabled = true;
   compileBtn.textContent = "コンパイル中…";
-  engineState.className = "engine-state busy";
-  engineState.innerHTML = "<i></i> コンパイル中";
-  setStatus("busy", "WebAssemblyエンジンでコンパイルしています…");
-  log("コンパイルを開始します。", false);
-  const started = performance.now();
+
+  setStatus("busy", "コンパイルしています…");
+  log("コンパイル開始", true);
+
+  const start = performance.now();
+
   try {
     const engine = await getEngine();
-    log("ブラウザ内LaTeXエンジンの準備ができました。");
-    const result = await engine.latex(tex, { output: "pdf" });
-    const diagnostics = formatDiagnostics(result.diagnostics || []);
-    if (diagnostics) log(diagnostics);
-    if (!result.pdf || result.status === "error" || result.status === "fatal") {
-      throw new Error(diagnostics || "PDFを生成できませんでした。");
+
+    const result = await engine.latex(tex, {
+      output: "pdf"
+    });
+
+    if (!result.pdf) {
+      throw new Error(
+        "PDFを生成できませんでした。\n" +
+        JSON.stringify(result.diagnostics || [])
+      );
     }
-    lastPdf = new Blob([result.pdf], {type:"application/pdf"});
-    if (currentPdfUrl) URL.revokeObjectURL(currentPdfUrl);
-    currentPdfUrl = URL.createObjectURL(lastPdf);
+
+    const blob = new Blob(
+      [result.pdf],
+      { type: "application/pdf" }
+    );
+
+    if (currentPdfUrl) {
+      URL.revokeObjectURL(currentPdfUrl);
+    }
+
+    currentPdfUrl = URL.createObjectURL(blob);
+    lastPdf = blob;
+
     pdfFrame.src = currentPdfUrl;
     pdfFrame.hidden = false;
     emptyState.hidden = true;
+
     $("downloadPdf").disabled = false;
-    const seconds = ((performance.now() - started) / 1000).toFixed(2);
-    setStatus("ok", `コンパイル成功 — ${seconds} 秒`);
-    engineState.className = "engine-state ready";
-    engineState.innerHTML = "<i></i> エンジン準備完了";
-    log(`\n完了：PDFを生成しました（${seconds} 秒）。`);
+
+    const seconds =
+      ((performance.now() - start) / 1000).toFixed(2);
+
+    setStatus("ok", `コンパイル成功（${seconds}秒）`);
+    log(`PDFを生成しました（${seconds}秒）。`);
+
   } catch (error) {
-    setStatus("error", "コンパイルに失敗しました。ログを確認してください。");
-    engineState.className = "engine-state";
-    engineState.innerHTML = "<i></i> エラー";
-    log(`\n[COMPILE ERROR] ${error?.message || String(error)}`);
+    setStatus("error", "コンパイルに失敗しました。");
+    log("[ERROR] " + (error.message || error));
+
     console.error(error);
+
   } finally {
     compileBtn.disabled = false;
     compileBtn.innerHTML = "<span>▶</span> コンパイル";
   }
 }
+
+// ========================================
+// ボタンのイベント登録
+// ※エンジンの読み込みより先に登録する
+// ========================================
+
+// コンパイル
+compileBtn.addEventListener("click", compile);
+
+// サンプル
+$("sampleBtn").addEventListener("click", () => {
+  source.value = sample;
+
+  updateEditorMeta();
+  source.focus();
+
+  setStatus("", "サンプルコードを読み込みました。");
+});
+
+// クリア
+$("clearBtn").addEventListener("click", () => {
+  source.value = "";
+
+  updateEditorMeta();
+  source.focus();
+
+  setStatus("", "入力欄をクリアしました。");
+});
+
+// ログのクリア
+$("clearLog").addEventListener("click", () => {
+  logOutput.textContent = "ログを消去しました。";
+});
+
+// TeXファイルのダウンロード
+$("downloadTex").addEventListener("click", () => {
+  const blob = new Blob(
+    [source.value],
+    { type: "application/x-tex;charset=utf-8" }
+  );
+
+  downloadBlob(blob, "main.tex");
+});
+
+// PDFのダウンロード
+$("downloadPdf").addEventListener("click", () => {
+  if (lastPdf) {
+    downloadBlob(lastPdf, "output.pdf");
+  }
+});
+
 function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = filename; a.click();
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
-compileBtn.addEventListener("click", compile);
-$("sampleBtn").addEventListener("click", () => { source.value = sample; updateEditorMeta(); });
-$("clearBtn").addEventListener("click", () => { source.value = ""; updateEditorMeta(); });
-$("clearLog").addEventListener("click", () => { logOutput.textContent = "ログを消去しました。"; });
-$("downloadTex").addEventListener("click", () => downloadBlob(new Blob([source.value],{type:"application/x-tex;charset=utf-8"}),"main.tex"));
-$("downloadPdf").addEventListener("click", () => { if (lastPdf) downloadBlob(lastPdf,"output.pdf"); });
+
+// ========================================
+// エディタ操作
+// ========================================
+
 source.addEventListener("input", updateEditorMeta);
-source.addEventListener("scroll", () => { $("lineNumbers").scrollTop = source.scrollTop; });
-source.addEventListener("keydown", e => {
-  if (e.key === "Tab") {
-    e.preventDefault();
-    const a = source.selectionStart, b = source.selectionEnd;
-    source.setRangeText("  ",a,b,"end");
+
+source.addEventListener("scroll", () => {
+  $("lineNumbers").scrollTop = source.scrollTop;
+});
+
+// Tabキーで空白を挿入
+source.addEventListener("keydown", (event) => {
+  if (event.key === "Tab") {
+    event.preventDefault();
+
+    const start = source.selectionStart;
+    const end = source.selectionEnd;
+
+    source.setRangeText("  ", start, end, "end");
+
     updateEditorMeta();
   }
-  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") compile();
+
+  // Ctrl + Enter / Cmd + Enter でコンパイル
+  if (
+    (event.ctrlKey || event.metaKey) &&
+    event.key === "Enter"
+  ) {
+    compile();
+  }
 });
+
+// ========================================
+// 初期化
+// ========================================
+
 source.value = sample;
 updateEditorMeta();
+
+// エンジンの起動は最後に実行。
+// 失敗してもボタン操作には影響しない。
+getEngine().catch(() => {
+  setStatus(
+    "error",
+    "エンジンを起動できません。ログを確認してください。"
+  );
+});
