@@ -1,0 +1,75 @@
+{
+  "version": "2025.1",
+  "bundles": [
+    {
+      "name": "classico",
+      "files": 67,
+      "bytes": 1010273
+    },
+    {
+      "name": "ghostscript",
+      "files": 272,
+      "bytes": 9826547
+    },
+    {
+      "name": "core",
+      "files": 101,
+      "bytes": 1325156
+    },
+    {
+      "name": "ps-fonts",
+      "files": 570,
+      "bytes": 3047583
+    },
+    {
+      "name": "lm-fonts",
+      "files": 782,
+      "bytes": 14331691
+    },
+    {
+      "name": "cm-tfm",
+      "files": 768,
+      "bytes": 1674452
+    },
+    {
+      "name": "cm-type1",
+      "files": 140,
+      "bytes": 3920290
+    },
+    {
+      "name": "tikz-snapshot",
+      "files": 1,
+      "bytes": 5819789
+    },
+    {
+      "name": "opentype",
+      "files": 241,
+      "bytes": 20148788
+    },
+    {
+      "name": "otf-fonts",
+      "files": 1,
+      "bytes": 733736
+    },
+    {
+      "name": "luatex",
+      "files": 9,
+      "bytes": 7846051
+    },
+    {
+      "name": "tex-plain",
+      "files": 126,
+      "bytes": 2861417
+    },
+    {
+      "name": "latex-core",
+      "files": 206,
+      "bytes": 6738008
+    },
+    {
+      "name": "latex-extra",
+      "files": 934,
+      "bytes": 12615974
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+const NUM = /-?\d+\.\d{4,}/g;
+export function postProcessSvg(svg, opts = {}, figureIndex = 0) {
+    let s = svg;
+    if (opts.precision !== false) {
+        const p = opts.precision ?? 3;
+        s = s.replace(NUM, (m) => {
+            const v = Number(m);
+            let r = v.toFixed(p);
+            if (r.includes('.'))
+                r = r.replace(/\.?0+$/, '');
+            if (r === '-0')
+                r = '0';
+            return r;
+        });
+    }
+    if (opts.idPrefix !== false) {
+        // MetaPost's ids (GLYPHcmr10_77, CLIP1, ...) are global per figure and
+        // collide when several figures are inlined on one page: url(#CLIP1) then
+        // resolves to the first CLIP1 in the document. Namespace every id and
+        // every reference to one.
+        // MetaPost's backend writes double-quoted attributes, dvisvgm single-quoted ones
+        const prefix = opts.idPrefix ?? `mp${figureIndex}-`;
+        s = s.replace(/\bid=(["'])([^"']+)\1/g, (_m, q, id) => `id=${q}${prefix}${id}${q}`)
+            .replace(/href=(["'])#([^"']+)\1/g, (_m, q, id) => `href=${q}#${prefix}${id}${q}`)
+            .replace(/url\(#([^)]+)\)/g, (_m, id) => `url(#${prefix}${id})`);
+        // fonts: 'woff2' has the same problem one level up. dvisvgm names each embedded
+        // face nf0, nf1, ... and styles the runs with `text.f0 {font-family:nf0}`. Once the
+        // SVG is inlined both the @font-face family names and the class selectors are
+        // document-global, so a second figure's nf0 wins and the first renders from the
+        // wrong subset — with a fallback glyph wherever that subset has no such character,
+        // which is how it shows up: a word half in one weight and half in another.
+        s = s.replace(/font-family:nf(\d+)/g, (_m, n) => `font-family:${prefix}nf${n}`)
+            .replace(/\btext\.f(\d+)\b/g, (_m, n) => `text.${prefix}f${n}`)
+            .replace(/\bclass=(["'])f(\d+)\1/g, (_m, q, n) => `class=${q}${prefix}f${n}${q}`);
+    }
+    if (opts.modernHref)
+        s = s.replace(/xlink:href=/g, 'href=');
+    if (opts.units === 'px') {
+        s = s.replace(/<svg([^>]*)width="([\d.]+)"([^>]*)height="([\d.]+)"/, (_m, a, w, b, h) => `<svg${a}width="${trim(Number(w) * 96 / 72)}"${b}height="${trim(Number(h) * 96 / 72)}"`);
+    }
+    else if (opts.units === 'none') {
+        s = s.replace(/<svg([^>]*)\swidth="[\d.]+"/, '<svg$1').replace(/<svg([^>]*)\sheight="[\d.]+"/, '<svg$1');
+    }
+    if (opts.title) {
+        const t = escapeXml(opts.title);
+        s = s.replace(/<svg([^>]*)>/, `<svg$1 role="img" aria-label="${t}"><title>${t}</title>`);
+    }
+    return s;
+}
+function trim(v) { let r = v.toFixed(3); r = r.replace(/\.?0+$/, ''); return r; }
+function escapeXml(s) { return s.replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' }[c])); }
+/**
+ * A regular-expression allow-list over the markup: keeps the SVG elements
+ * MetaPost emits and drops everything else (scripts, event handlers,
+ * foreignObject, external references).
+ *
+ * @deprecated Not a security boundary, and too narrow for what the engines
+ * produce: it drops gradients (every PGF shading), patterns, `<style>` (the
+ * faces of `fonts: 'woff2'`) and the geometry of circles, ellipses and lines.
+ * Sanitise untrusted output with DOMPurify instead — the README's
+ * "Untrusted sources" has the configuration. Kept, unchanged, so existing
+ * callers do not break; to be removed at 1.0.
+ */
+export function sanitizeSvg(svg) {
+    const allowedTags = new Set(['svg', 'g', 'path', 'defs', 'use', 'text', 'title', 'desc', 'clipPath', 'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon', 'tspan']);
+    const allowedAttr = /^(id|class|d|x|y|width|height|viewBox|version|xmlns|xmlns:xlink|xlink:href|href|transform|style|fill|fill-rule|stroke|stroke-width|stroke-linecap|stroke-linejoin|stroke-miterlimit|stroke-dasharray|stroke-dashoffset|clip-path|font-size|font-family|role|aria-label|opacity|fill-opacity|stroke-opacity)$/;
+    // comments are harmless but drop them to be safe; scripts and foreign
+    // content go with their contents, not just their tags
+    let out = svg.replace(/<!--[\s\S]*?-->/g, '');
+    out = out.replace(/<\?xml[^>]*\?>/, '');
+    out = out.replace(/<(script|style|foreignObject|iframe|object|embed)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '');
+    out = out.replace(/<\/?([a-zA-Z:]+)([^>]*)>/g, (m, tag, attrs) => {
+        if (!allowedTags.has(tag))
+            return '';
+        if (m.startsWith('</'))
+            return `</${tag}>`;
+        const kept = (attrs.match(/([a-zA-Z:-]+)\s*=\s*("[^"]*"|'[^']*')/g) || []).filter((a) => {
+            const name = a.split('=')[0].trim();
+            if (!allowedAttr.test(name))
+                return false;
+            const val = a.slice(a.indexOf('=') + 1).trim().slice(1, -1);
+            if (/href/.test(name) && !val.startsWith('#'))
+                return false;
+            // only same-document url(#id) references (clip-path, fill patterns); nothing external
+            if (/url\(/i.test(val) && !/^url\(#[^)]+\)$/.test(val.trim()))
+                return false;
+            if (/javascript:|expression\(|@import|data:/i.test(val))
+                return false;
+            return true;
+        });
+        const selfClose = attrs.trim().endsWith('/') ? '/' : '';
+        return `<${tag}${kept.length ? ' ' + kept.join(' ') : ''}${selfClose}>`;
+    });
+    return out.trim();
+}
+//# sourceMappingURL=svg.js.map

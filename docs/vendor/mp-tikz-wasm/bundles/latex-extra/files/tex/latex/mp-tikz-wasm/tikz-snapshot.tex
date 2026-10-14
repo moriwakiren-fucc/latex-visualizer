@@ -1,0 +1,18 @@
+% tikz-snapshot.tex — read by tikz.ini in place of latex.ltx's final \dump.
+% pgf loads its own dependencies with \usepackage, which latex.ltx forbids
+% before \documentclass; \documentclass re-establishes the real \usepackage.
+% Only libraries that are purely definitional are preloaded: `bending`,
+% `babel`, `external`, `patterns.meta` and \pgfplotsset{compat=...} change
+% the output of documents that did not ask for them, so they stay out
+% (scripts/golden-tikz.mjs proves tikz.fmt and latex.fmt give identical pages).
+\let\usepackage\RequirePackage
+\def\pgfsysdriver{pgfsys-dvisvgm.def}
+\RequirePackage{tikz}
+\usetikzlibrary{arrows.meta,calc,positioning,shapes.geometric,shapes.misc,shapes.symbols,shapes.arrows,shapes.multipart,shapes.callouts,decorations.pathmorphing,decorations.pathreplacing,decorations.markings,decorations.text,decorations.shapes,patterns,shadings,shadows,fadings,mindmap,fit,backgrounds,matrix,trees,intersections,through,angles,quotes,3d,math,plotmarks,scopes,chains,automata,petri,er,topaths,perspective,graphs}
+\RequirePackage{pgfplots}
+\RequirePackage{tikz-cd}
+% loading libraries allocated pgf/svg object ids; start documents from the
+% same counters a plain latex.fmt run would
+\makeatletter
+\global\pgf@sys@id@count=0 \global\pgf@sys@svg@objectcount=0 \global\pgf@sys@svg@scopecount=0 \global\pgf@sys@svg@type@count=0
+\makeatother
