@@ -1,1 +1,45 @@
-
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#111827">
+<title>TeX Studio — Browser LaTeX</title>
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><div class="brand-mark">T<span>eX</span></div><div><strong>TeX Studio</strong><small>Browser LaTeX Compiler</small></div></div>
+  <div class="top-actions">
+    <span id="engineState" class="engine-state"><i></i> エンジン未起動</span>
+    <button id="compileBtn" class="primary"><span>▶</span> コンパイル</button>
+  </div>
+</header>
+<main>
+  <section class="workspace">
+    <div class="editor-pane">
+      <div class="pane-head"><div><span class="dot purple"></span> <b>main.tex</b><span class="muted">LaTeX ソース</span></div><div class="pane-tools"><button id="sampleBtn" title="サンプルを読み込む">サンプル</button><button id="clearBtn" title="コードを消去">クリア</button></div></div>
+      <div class="editor-wrap">
+        <div class="line-numbers" id="lineNumbers">1</div>
+        <textarea id="source" spellcheck="false" autocapitalize="off" autocomplete="off" autocorrect="off" aria-label="LaTeXソースコード"></textarea>
+      </div>
+      <div class="editor-foot"><span>LaTeX / TikZ / PGFPlots</span><span id="charCount">0 文字</span></div>
+    </div>
+    <section class="preview-pane">
+      <div class="pane-head"><div><span class="dot green"></span><b>プレビュー</b><span class="muted" id="previewInfo">PDF出力</span></div><div class="pane-tools"><button id="downloadTex">.tex 保存</button><button id="downloadPdf" disabled>PDF 保存</button></div></div>
+      <div class="preview-area" id="previewArea">
+        <div class="empty-state" id="emptyState"><div class="paper-icon">PDF</div><h2>コンパイル結果をここに表示</h2><p>左側にLaTeXコードを入力し、<br>「コンパイル」を押してください。</p></div>
+        <iframe id="pdfFrame" title="コンパイル済みPDF" hidden></iframe>
+      </div>
+      <div class="compile-status" id="compileStatus"><span class="status-dot"></span><span>初回はエンジンと必要なパッケージを読み込みます。</span></div>
+    </section>
+  </section>
+  <section class="log-panel">
+    <div class="log-head"><div><span class="terminal-icon">›_</span><b>コンパイルログ</b></div><button id="clearLog">ログを消去</button></div>
+    <pre id="logOutput">準備完了。初回コンパイル時にWebAssemblyエンジンを読み込みます。</pre>
+  </section>
+</main>
+<footer><span>処理はブラウザ内で実行されます。入力したソースコードはコンパイルサーバーへ送信されません。</span><span>TeX Studio</span></footer>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
